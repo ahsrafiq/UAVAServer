@@ -5,14 +5,13 @@ const DeviceSchema = new mongoose.Schema({
   deviceInfo: {
     name: { type: String },
     model: { type: String },
-    status: { type: String },
+    status: { type: String, default: 'inactive' },
   },
 });
 
 const UserSchema = new mongoose.Schema({
-  userId: { type: String, unique: true, required: true },
   phoneNumber: { type: String, unique: true, required: true },
-  verificationId: { type: String, required: false },
+  verificationCode: { type: String, required: false },
   isVerified: { type: Boolean, default: false },
   devices: [DeviceSchema],
 });

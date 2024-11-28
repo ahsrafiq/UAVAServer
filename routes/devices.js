@@ -3,63 +3,71 @@ const router = express.Router();
 const User = require('../models/User');
 
 router.post('/bind-device', async (req, res) => {
-    const { userId, deviceId, deviceInfo } = req.body;
-  
-    try {
-      const user = await User.findOne({ userId });
-      if (!user) {
-        return res.status(404).json({ success: false, message: 'User not found' });
-      }
-  
-      const deviceExists = user.devices.some(device => device.deviceId === deviceId);
-  
-      if (deviceExists) {
-        await User.updateOne(
-          { userId, "devices.deviceId": deviceId },
-          { $set: { "devices.$.deviceInfo": { ...deviceInfo, status: "active" } } }
-        );
-        return res.status(200).json({ success: true, message: 'Device status updated to active' });
-      } else {
-        await User.updateOne(
-          { userId },
-          {
-            $push: {
-              devices: {
-                deviceId,
-                deviceInfo: { 
-                    ...deviceInfo, 
-                    status: "active" },
-              },
-            },
-          }
-        );
-        return res.status(200).json({ success: true, message: 'Device added successfully' });
-      }
-    } catch (error) {
-      res.status(500).json({ success: false, message: error.message });
+  const { phoneNumber, deviceId, deviceInfo } = req.body;
+
+  try {
+    const user = await User.findOne({ phoneNumber });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
     }
-  });
-  
-  router.post('/unbind-device', async (req, res) => {
-    const { userId, deviceId } = req.body;
-  
-    try {
-      const user = await User.findOneAndUpdate(
-        { userId, "devices.deviceId": deviceId },
-        {
-          $set: { "devices.$.deviceInfo.status": "inactive" },
-        },
-        { new: true }
-      );
-  
-      if (!user) {
-        return res.status(404).json({ success: false, message: "User or device not found" });
-      }
-  
-      res.status(200).json({ success: true, message: "Device unbound successfully (marked as inactive)" });
-    } catch (error) {
-      res.status(500).json({ success: false, message: error.message });
+
+    const otherUser = await User.findOne({ "devices.deviceId": deviceId });
+    if (otherUser && otherUser.phoneNumber !== phoneNumber) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Device is already bound to another user' });
     }
-  });
-  
-  module.exports = router;
+
+    user.devices.forEach(device => {
+      if (device.deviceId !== deviceId) {
+        device.deviceInfo.status = 'inactive';
+      }
+    });
+
+    const existingDevice = user.devices.find(device => device.deviceId === deviceId);
+    if (existingDevice) {
+      existingDevice.deviceInfo = { ...deviceInfo, status: 'active' };
+    } else {
+      user.devices.push({
+        deviceId,
+        deviceInfo: { ...deviceInfo, status: 'active' },
+      });
+    }
+
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Device bound successfully, all other devices marked inactive',
+      devices: user.devices,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+
+router.post('/unbind-device', async (req, res) => {
+  const { phoneNumber, deviceId } = req.body;
+
+  try {
+    const user = await User.findOne({ phoneNumber });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const device = user.devices.find(device => device.deviceId === deviceId);
+    if (!device) {
+      return res.status(404).json({ success: false, message: 'Device not found for this user' });
+    }
+
+    device.deviceInfo.status = 'inactive';
+    await user.save();
+
+    res.status(200).json({ success: true, message: 'Device unbound successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+module.exports = router;

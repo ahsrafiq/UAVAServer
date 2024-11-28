@@ -1,53 +1,100 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
-const twilio = require('twilio');
-const { v4: uuidv4 } = require('uuid');
+const axios = require('axios');
 require('dotenv').config();
-
-const client = new twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+//const twilio = require('twilio');
 
 router.post('/send-verification', async (req, res) => {
+  //const client = new twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
   const { phoneNumber } = req.body;
-  const verificationId = uuidv4();
   const verificationCode = Math.floor(100000 + Math.random() * 900000);
 
+  // await client.messages.create({
+  //   body: `Your verification code is: ${verificationCode}`,
+  //   to: phoneNumber,
+  //   from: process.env.TWILIO_PHONE_NUMBER,
+  // });
+
+  //   res.json({ response: success, message: 'Verification code sent', verificationId });
+  // } catch (error) {
+  //   res.status(500).json({ response: error, message: error.message });
+  // }
+
   try {
-    const user = await User.findOneAndUpdate(
-      { phoneNumber },
-      { phoneNumber, verificationId, isVerified: false },
-      { new: true }
-    );
-
-    if (!user) {
-      return res.status(400).json({ response: error, message: 'User Not Found' });
-    }
-
-    await client.messages.create({
-      body: `Your verification code is: ${verificationCode}`,
-      to: phoneNumber,
-      from: process.env.TWILIO_PHONE_NUMBER,
+    const response = await axios.post('https://textbelt.com/text', {
+      phone: phoneNumber,
+      message: `Your verification code is: ${verificationCode}`,
+      key: process.env.TEXTBELT_API_KEY,
     });
 
-    res.json({ response: success, message: 'Verification code sent', verificationId });
+    if (response.data.success) {
+      await User.updateOne(
+        { phoneNumber },
+        { verificationCode },
+        { upsert: true }
+      );
+
+      res.json({ success: true, message: 'Verification code sent' });
+    } else {
+      res.json({
+        success: false,
+        message: response.data.error || 'Failed to send SMS',
+      });
+    }
   } catch (error) {
-    res.status(500).json({ response: error, message: error.message });
+    res.json({ success: false, message: error.message });
   }
 });
 
+
 router.post('/verify-code', async (req, res) => {
-  const { verificationId, code } = req.body;
+  const { phoneNumber, code, deviceId, deviceInfo } = req.body;
 
   try {
-    const user = await User.findOne({ verificationId });
+    const user = await User.findOne({ phoneNumber });
     if (!user || user.verificationCode !== code) {
-      return res.status(400).json({ success: false, message: 'Invalid code' });
+      return res.status(400).json({ success: false, message: 'Invalid OTP' });
     }
 
     user.isVerified = true;
+    user.verificationCode = null;
     await user.save();
 
-    res.json({ success: true, message: 'Verified successfully', userId: user.userId });
+    const otherUser = await User.findOne({ "devices.deviceId": deviceId });
+    if (otherUser && otherUser.phoneNumber !== phoneNumber) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Device is already bound to another user' });
+    }
+
+    if (user.devices.some(device => device.deviceId === deviceId)) {
+      return res.status(200).json({
+        success: true,
+        message: 'Device already bound',
+        devices: user.devices,
+      });
+    }
+
+    if (deviceId && deviceInfo) {
+      user.devices.push({
+        deviceId,
+        deviceInfo: { ...deviceInfo, status: 'active' },
+      });
+      await user.save();
+
+      return res.status(200).json({
+        success: true,
+        message: 'Device bound successfully',
+        devices: user.devices,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'User verified successfully',
+      devices: user.devices,
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
