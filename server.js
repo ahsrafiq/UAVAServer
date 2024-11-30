@@ -15,7 +15,8 @@ mongoose
 
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/devices', require('./routes/devices'));
-app.use('/api/users', require('./routes/addUsers')); 
+//app.use('/api/users', require('./routes/addUsers')); 
+app.use('/rsa', require('./routes/rsa'));
 
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);

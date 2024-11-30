@@ -3,13 +3,20 @@ const router = express.Router();
 const User = require('../models/User');
 const axios = require('axios');
 require('dotenv').config();
+const jwt = require('jsonwebtoken');
+const validateOpKey = require('../config/opKeyMiddleware');
+const decryptData = require('../helper/rsaDecrypt');
 //const twilio = require('twilio');
 
-router.post('/send-verification', async (req, res) => {
-  //const client = new twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+router.post('/send-verification', validateOpKey('send-verification'), async (req, res) => {
+  
+  //const encryptedPhoneNumber = req.body.phoneNumber;
+  //const phoneNumber = decryptData(encryptedPhoneNumber);
+  
   const { phoneNumber } = req.body;
   const verificationCode = Math.floor(100000 + Math.random() * 900000);
-
+  
+  //const client = new twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
   // await client.messages.create({
   //   body: `Your verification code is: ${verificationCode}`,
   //   to: phoneNumber,
@@ -48,8 +55,8 @@ router.post('/send-verification', async (req, res) => {
 });
 
 
-router.post('/verify-code', async (req, res) => {
-  const { phoneNumber, code, deviceId, deviceInfo } = req.body;
+router.post('/verify-code', validateOpKey('verify-code'), async (req, res) => {
+  const { phoneNumber, code } = req.body;
 
   try {
     const user = await User.findOne({ phoneNumber });
@@ -61,43 +68,44 @@ router.post('/verify-code', async (req, res) => {
     user.verificationCode = null;
     await user.save();
 
-    const otherUser = await User.findOne({ "devices.deviceId": deviceId });
-    if (otherUser && otherUser.phoneNumber !== phoneNumber) {
-      return res
-        .status(400)
-        .json({ success: false, message: 'Device is already bound to another user' });
-    }
-
-    if (user.devices.some(device => device.deviceId === deviceId)) {
-      return res.status(200).json({
-        success: true,
-        message: 'Device already bound',
-        devices: user.devices,
-      });
-    }
-
-    if (deviceId && deviceInfo) {
-      user.devices.push({
-        deviceId,
-        deviceInfo: { ...deviceInfo, status: 'active' },
-      });
-      await user.save();
-
-      return res.status(200).json({
-        success: true,
-        message: 'Device bound successfully',
-        devices: user.devices,
-      });
-    }
-
+    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
     res.status(200).json({
       success: true,
-      message: 'User verified successfully',
-      devices: user.devices,
+      token,
+      message: 'User verified successfully'
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
+
+    // const otherUser = await User.findOne({ "devices.deviceId": deviceId });
+    // if (otherUser && otherUser.phoneNumber !== phoneNumber) {
+    //   return res
+    //     .status(400)
+    //     .json({ success: false, message: 'Device is already bound to another user' });
+    // }
+
+    // if (user.devices.some(device => device.deviceId === deviceId)) {
+    //   return res.status(200).json({
+    //     success: true,
+    //     message: 'Device already bound',
+    //     devices: user.devices,
+    //   });
+    // }
+
+    // if (deviceId && deviceInfo) {
+    //   user.devices.push({
+    //     deviceId,
+    //     deviceInfo: { ...deviceInfo, status: 'active' },
+    //   });
+    //   await user.save();
+
+    //   return res.status(200).json({
+    //     success: true,
+    //     message: 'Device bound successfully',
+    //     devices: user.devices,
+    //   });
+    // }
 });
 
 module.exports = router;

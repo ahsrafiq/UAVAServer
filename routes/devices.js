@@ -1,8 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
+const authenticateToken = require('../config/jwtMiddleware');
+const validateOpKey = require('../config/opKeyMiddleware');
 
-router.post('/bind-device', async (req, res) => {
+router.post('/bind-device', [authenticateToken, validateOpKey('bind-device')], async (req, res) => {
   const { phoneNumber, deviceId, deviceInfo } = req.body;
 
   try {
@@ -47,7 +49,7 @@ router.post('/bind-device', async (req, res) => {
 });
 
 
-router.post('/unbind-device', async (req, res) => {
+router.post('/unbind-device', [authenticateToken, validateOpKey('unbind-device')], async (req, res) => {
   const { phoneNumber, deviceId } = req.body;
 
   try {
