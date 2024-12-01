@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const router = express.Router();
 
+
 router.get('/rsa-public-key', (req, res) => {
   try {
     const publicKey = fs.readFileSync(path.join(__dirname, '../keys/public.key'), 'utf8');
